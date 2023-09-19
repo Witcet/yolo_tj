@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from yolo_tj.utils import LOGGER,url2file
+from yolo_tj.utils import LOGGER,url2file,clean_url,downloads
 
 # 改以前的文件名
 def check_yolov5u_filename(file:str,verbose:bool=True):
@@ -36,7 +36,11 @@ def check_file(file,suffix='',download=True,hard=True):
     elif download and file.lower().startswith(('https://','http://','rtsp://','rtmp://')):
         url=file
         file=url2file(file)
-        # todo
+        if Path(file).exists():
+            LOGGER.info(f'Found {clean_url(url)} locally at {file}')
+        else:
+            download.safe_download(url=url,file=file,unzip=False)
+
 
 def check_yaml(file,suffix=('.yaml','.yml'),hard=True):
     return

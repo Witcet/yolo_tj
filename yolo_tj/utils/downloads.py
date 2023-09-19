@@ -1,13 +1,16 @@
 import shutil
 import subprocess
 from pathlib import Path
-from yolo_tj.utils import url2file,clean_url,LOGGER
+from yolo_tj.utils import url2file,clean_url,LOGGER,TQDM,is_online,emojis
 import requests # 发起 HTTP 请求并处理 HTTP 响应
 import torch
+from urllib import request
 
 GITHUB_ASSETS_NAMES = [f'yolov8{k}{suffix}.pt' for k in 'nsmlx' for suffix in ('', '6', '-cls', '-seg', '-pose')]
 
 GITHUB_ASSETS_STEMS = [Path(k).stem for k in GITHUB_ASSETS_NAMES]
+
+
 
 def check_disk_space(url='https://ultralytics.com/assets/coco128.zip',sf=1.5,hard=True):
     r=requests.head(url) #只请求获取目标资源的头部信息，而不会获取资源的实际内容
@@ -26,6 +29,17 @@ def check_disk_space(url='https://ultralytics.com/assets/coco128.zip',sf=1.5,har
     return False
 
 
+
+def unzip_file(file,path=None,exclude=('.DS_Store','__MACOSX'),progres=True):
+    from zipfile import BadZipfile,ZipFile,is_zipfile   # 提供了用于创建、读取和处理 ZIP 文件的工具
+
+    if not (Path(file).exists() and is_zipfile(file)):
+        raise BadZipfile(f"File '{file}' does not exist or is a bad zip file.")
+    if path is None:
+        path=Path(file).parent
+
+    with ZipFile(file) as zipObj:
+        # todo
 
 
 
@@ -59,5 +73,33 @@ def safe_download(url,
                     if method=='torch':
                         torch.hub.download_url_to_file(url,f,progress=progress)
                     else:
+                        with request.urlopen(url) as response,TQDM(total=int(response.getheader('Content-Length',0)), # 指定定总进度的大小
+                                                                   desc=desc, # 描述性文本
+                                                                   disable=not progress, # 是否显示过程
+                                                                   unit='B',    # 单位（字节）
+                                                                   unit_scale=True, # 自动调整单位，如KB，MB
+                                                                   unit_divisor=1024) as pbar: # 单位划分的基数 默认1000
+                            with open(f,'wb') as f_opened:
+                                for data in response:
+                                    f_opened.write(data)
+                                    pbar.update(len(data)) # 更新进度条
+
+                if f.exists():
+                    if f.stat().st_size>min_bytes: # 下载的文件足够大，下载成功
+                        break
+                    f.unlink() # 否则删除该文件
+            except Exception as e:
+                if i==0 and not is_online():
+                    raise ConnectionError(emojis(f'❌ Download failure for {url}. Environment is not online.')) from e
+                elif i>=retry:
+                    raise ConnectionError(emojis(f'❌  Download failure for {url}. Retry limit reached.')) from e
+                LOGGER.warning(f'⚠️ Download failure, retrying {i + 1}/{retry} {url}...')
+
+    if unzip and f.exists() and f.suffix in ('','.zip','.tar','gz'):
+        from zipfile import is_zipfile
+
+        unzip_dir = dir or f.parent
+        if  is_zipfile(f):
+            unzip_dir=unzip_file
 
 
